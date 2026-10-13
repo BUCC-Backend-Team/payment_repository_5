@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: Marketly-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: Marketly
+      POSTGRES_USER: Admin
+      POSTGRES_PASSWORD: X82Gky3oki9you
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
