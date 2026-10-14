@@ -22,15 +22,12 @@ public class IdempotencyKeys {
 
     @Column(nullable = false,updatable = false)
     public String requestHash;
-
-    @Column(nullable = false)
     public String responseStatus;
     public String responseBody;
 
-    @Column(nullable = false)
+
     public UUID paymentId;
 
-    @Column(nullable = false)
     public UUID refundId;
     public Instant createdAt;
 

@@ -29,7 +29,7 @@ public class Payments {
     @Column(nullable = false)
     public int amount;
 
-    @Column(nullable = false,unique = true)
+    @Column(nullable = false)
     public String customer_email;
 
     @Column(nullable = false)
@@ -42,7 +42,7 @@ public class Payments {
     public String channel;
 
     @Column(nullable = false)
-    public float amount_refunded;
+    public long amount_refunded;
 
     @Column(nullable = false)
     public String checkout_url;

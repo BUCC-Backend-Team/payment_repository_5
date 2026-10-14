@@ -4,12 +4,14 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
+@Component
 public class ApiKeyFilter extends OncePerRequestFilter {
     private static final String BEARER="Bearer";
     public byte[] expectedKey;
@@ -22,7 +24,7 @@ public class ApiKeyFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         try {
-            String header=request.getHeader("Authorization ");
+            String header=request.getHeader("Authorization");
             if(header != null && header.startsWith(BEARER)){
                 byte[] provided=header.substring(BEARER.length()).trim().getBytes(StandardCharsets.UTF_8);
                 if(MessageDigest.isEqual(provided,expectedKey)){
