@@ -1,5 +1,7 @@
 package Marketly.Payment.Service.db.Entity;
 
+import Marketly.Payment.Service.db.enums.PaymentStatus;
+import Marketly.Payment.Service.db.enums.RefundStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -7,7 +9,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -25,7 +26,7 @@ public class Refunds {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    public PaymentStatus status;
+    public RefundStatus status;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name="payment_id",nullable = false)

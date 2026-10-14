@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class PaymentController {
-    @GetMapping("/payments/:id")
+    @GetMapping("/payments/{id}")
     public ResponseEntity<Void> getPayment(){
         //return RespinseEntity(OK,PaymentStatus)
         return null;

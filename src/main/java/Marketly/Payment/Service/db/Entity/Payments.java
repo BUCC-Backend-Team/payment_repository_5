@@ -27,7 +27,7 @@ public class Payments {
     public String order_id;
 
     @Column(nullable = false)
-    public float amount;
+    public int amount;
 
     @Column(nullable = false,unique = true)
     public String customer_email;
