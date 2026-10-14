@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -20,15 +21,16 @@ public class Refunds {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     public UUID id;
-
-    @Column(nullable = false)
-    public UUID payment_id;
-    public float amount;
+    public long amount;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     public PaymentStatus status;
-    public String Refund_id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name="payment_id",nullable = false)
+    public Payments payment;
+    public String paystackRefundId;
     public String failure_reason;
     public Instant created_at;
     public Instant updated_at;
@@ -38,16 +40,16 @@ public class Refunds {
         if (o == null || getClass() != o.getClass()) return false;
 
         Refunds refunds = (Refunds) o;
-        return Float.compare(amount, refunds.amount) == 0 && Objects.equals(id, refunds.id) && Objects.equals(payment_id, refunds.payment_id) && status == refunds.status && Objects.equals(Refund_id, refunds.Refund_id) && Objects.equals(failure_reason, refunds.failure_reason) && Objects.equals(created_at, refunds.created_at) && Objects.equals(updated_at, refunds.updated_at);
+        return amount == refunds.amount && Objects.equals(id, refunds.id) && status == refunds.status && Objects.equals(payment, refunds.payment) && Objects.equals(paystackRefundId, refunds.paystackRefundId) && Objects.equals(failure_reason, refunds.failure_reason) && Objects.equals(created_at, refunds.created_at) && Objects.equals(updated_at, refunds.updated_at);
     }
 
     @Override
     public int hashCode() {
         int result = Objects.hashCode(id);
-        result = 31 * result + Objects.hashCode(payment_id);
-        result = 31 * result + Float.hashCode(amount);
+        result = 31 * result + Long.hashCode(amount);
         result = 31 * result + Objects.hashCode(status);
-        result = 31 * result + Objects.hashCode(Refund_id);
+        result = 31 * result + Objects.hashCode(payment);
+        result = 31 * result + Objects.hashCode(paystackRefundId);
         result = 31 * result + Objects.hashCode(failure_reason);
         result = 31 * result + Objects.hashCode(created_at);
         result = 31 * result + Objects.hashCode(updated_at);

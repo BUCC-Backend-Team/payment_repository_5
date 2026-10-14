@@ -1,7 +1,6 @@
 package Marketly.Payment.Service.db.Entity;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -17,11 +16,19 @@ import java.util.UUID;
 @Getter
 @Setter
 public class CallbackOutbox {
+    @Id
     public UUID id;
+    @Column(nullable = false)
     public UUID paymentId;
+
+    @Column(nullable = false)
     public String type;
     public String payload;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     public PaymentStatus Status;
+
     public int attempts;
     public Instant nextAttemptTime;
     public String lastError;
