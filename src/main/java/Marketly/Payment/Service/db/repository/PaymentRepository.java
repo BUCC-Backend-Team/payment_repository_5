@@ -7,17 +7,17 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Repository
 public interface PaymentRepository extends JpaRepository<Payments,UUID> {
+    // PaymentRepository
     @Modifying
     @Query(value = """
         UPDATE payment
-        SET status = 'SUCCEEDED', late = (status = 'EXPIRED'), paid_at = :paidAt
+        SET status = 'SUCCEEDED', late = (status = 'EXPIRED'), paid_at = :paidAt, updated_at = now()
         WHERE id = :id AND status IN ('PENDING', 'EXPIRED')
-         """, nativeQuery = true)
-    int insertIfAbsent(@Param("id") String id,
-                       @Param("hash")String hash,
-                       @Param("paymentId")UUID paymentId);
+        """, nativeQuery = true)
+    int markSucceeded(@Param("id") UUID id, @Param("paidAt") Instant paidAt);
 }

@@ -37,8 +37,8 @@ public class ApiKeyFilter extends OncePerRequestFilter {
                     filterChain.doFilter(request,response);
                     return;
                 }
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             }
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         } catch (Exception e) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             throw new RuntimeException(e);

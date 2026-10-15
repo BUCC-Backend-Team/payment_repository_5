@@ -44,16 +44,15 @@ public class Payments {
 
     public String channel;
 
-    @Column(nullable = false)
-    private String returnUrl;
+
 
     @Column(nullable = false)
     public long amount_refunded;
 
     public String checkout_url;
 
-    @OneToMany(mappedBy = "payment")
-    public List<Refunds> refunds=new ArrayList<>();
+//    @OneToMany(mappedBy = "payment")
+//    public List<Refunds> refunds=new ArrayList<>();
 
     @Column(nullable = false)
     public Boolean late;
@@ -63,10 +62,11 @@ public class Payments {
 
     @Override
     public boolean equals(Object o) {
+
         if (o == null || getClass() != o.getClass()) return false;
 
         Payments payments = (Payments) o;
-        return amount == payments.amount && amount_refunded == payments.amount_refunded && Objects.equals(id, payments.id) && Objects.equals(order_id, payments.order_id) && Objects.equals(currency, payments.currency) && Objects.equals(customer_email, payments.customer_email) && Objects.equals(return_url, payments.return_url) && status == payments.status && Objects.equals(channel, payments.channel) && Objects.equals(returnUrl, payments.returnUrl) && Objects.equals(checkout_url, payments.checkout_url) && Objects.equals(refunds, payments.refunds) && Objects.equals(late, payments.late) && Objects.equals(paid_at, payments.paid_at) && Objects.equals(created_at, payments.created_at) && Objects.equals(updated_at, payments.updated_at);
+        return amount == payments.amount && amount_refunded == payments.amount_refunded && Objects.equals(id, payments.id) && Objects.equals(order_id, payments.order_id) && Objects.equals(currency, payments.currency) && Objects.equals(customer_email, payments.customer_email) && Objects.equals(return_url, payments.return_url) && status == payments.status && Objects.equals(channel, payments.channel) && Objects.equals(checkout_url, payments.checkout_url) && Objects.equals(late, payments.late) && Objects.equals(paid_at, payments.paid_at) && Objects.equals(created_at, payments.created_at) && Objects.equals(updated_at, payments.updated_at);
     }
 
     @Override
@@ -79,10 +79,8 @@ public class Payments {
         result = 31 * result + Objects.hashCode(return_url);
         result = 31 * result + Objects.hashCode(status);
         result = 31 * result + Objects.hashCode(channel);
-        result = 31 * result + Objects.hashCode(returnUrl);
         result = 31 * result + Long.hashCode(amount_refunded);
         result = 31 * result + Objects.hashCode(checkout_url);
-        result = 31 * result + Objects.hashCode(refunds);
         result = 31 * result + Objects.hashCode(late);
         result = 31 * result + Objects.hashCode(paid_at);
         result = 31 * result + Objects.hashCode(created_at);
