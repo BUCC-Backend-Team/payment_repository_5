@@ -42,3 +42,14 @@ there is a wrapper around each call called data which helps to unpack paystacks'
 
 retry errors or other payment provider errors are handled by the ProviderException class
 
+**Concurrency**
+for concurrency I enforced a unique index on order id so a duplicate process which
+tries the register and existing order is rejected outright
+
+the allowed states are
+pending
+succeded
+partially refunded
+and not late(this was the most difficult)
+
+
