@@ -29,7 +29,7 @@ public class PaystackProvider implements PaymentProvider {
         this.http = RestClient.builder().
                 baseUrl("https://api.paystack.co")
                 .requestFactory(factory)
-                .defaultHeader(HttpHeaders.AUTHORIZATION,"Bearer "+props.paystack_secret_key())
+                .defaultHeader(HttpHeaders.AUTHORIZATION,"Bearer "+props.paystackSecretKey())
                 .build();
     }
     @Override

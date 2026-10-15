@@ -17,17 +17,16 @@ import java.util.UUID;
 @Setter
 public class IdempotencyKeys {
     @Id
-    public String key;
+    public String id;
     public String scope;
 
     @Column(nullable = false,updatable = false)
     public String requestHash;
-    public String responseStatus;
+    public Integer responseStatus;
     public String responseBody;
 
 
     public UUID paymentId;
-
     public UUID refundId;
     public Instant createdAt;
 

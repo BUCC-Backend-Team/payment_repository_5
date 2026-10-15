@@ -19,6 +19,12 @@ public class ApiKeyFilter extends OncePerRequestFilter {
     public ApiKeyFilter(AppProps props){
         this.expectedKey = props.merchantApiKey().getBytes(StandardCharsets.UTF_8);
     }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest req) {
+        String p = req.getRequestURI();
+        return p.equals("/health") || p.equals("/webhooks/paystack");
+    }
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -31,6 +37,7 @@ public class ApiKeyFilter extends OncePerRequestFilter {
                     filterChain.doFilter(request,response);
                     return;
                 }
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             }
         } catch (Exception e) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -38,4 +45,5 @@ public class ApiKeyFilter extends OncePerRequestFilter {
         }
 
     }
+
 }
