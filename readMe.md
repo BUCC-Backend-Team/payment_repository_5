@@ -52,4 +52,16 @@ succeded
 partially refunded
 and not late(this was the most difficult)
 
+constraints also exist at the repository level for idempotency keys and payments to prevent wrong states being saved
+or duplicates.
+
+**States**
+for payment states the order is
+
+PENDING            -> SUCCEEDED ||EXPIRED;
+EXPIRED            -> SUCCEEDED;
+SUCCEEDED          -> PARTIALLY_REFUNDED || REFUNDED;
+PARTIALLY_REFUNDED -> PARTIALLY_REFUNDED || REFUNDED;
+REFUNDED           -> false;
+
 

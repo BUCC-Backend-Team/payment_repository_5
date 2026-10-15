@@ -12,7 +12,7 @@ import java.util.UUID;
 
 @Repository
 public interface PaymentRepository extends JpaRepository<Payments,UUID> {
-    // PaymentRepository
+
     @Modifying
     @Query(value = """
         UPDATE payment
