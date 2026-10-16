@@ -56,12 +56,12 @@ constraints also exist at the repository level for idempotency keys and payments
 or duplicates.
 
 **States**
-for payment states the order is
+for payment states the order of flow is
 
-PENDING            -> SUCCEEDED ||EXPIRED;
-EXPIRED            -> SUCCEEDED;
-SUCCEEDED          -> PARTIALLY_REFUNDED || REFUNDED;
-PARTIALLY_REFUNDED -> PARTIALLY_REFUNDED || REFUNDED;
-REFUNDED           -> false;
+PENDING            → SUCCEEDED or EXPIRED.
+EXPIRED            → SUCCEEDED.
+SUCCEEDED          → PARTIALLY_REFUNDED or REFUNDED.
+PARTIALLY_REFUNDED → PARTIALLY_REFUNDED or REFUNDED.
+REFUNDED           → false.
 
 

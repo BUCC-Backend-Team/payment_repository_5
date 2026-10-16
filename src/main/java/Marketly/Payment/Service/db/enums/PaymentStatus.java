@@ -10,14 +10,13 @@ public enum PaymentStatus {
     REFUNDED;
 
     public String api(){
-        return name().toLowerCase(Locale.ROOT);
+        return name().toLowerCase();
     }
     public boolean canMoveTo(PaymentStatus next) {
         return switch (this) {
             case PENDING            -> next == SUCCEEDED || next == EXPIRED;
             case EXPIRED            -> next == SUCCEEDED;
-            case SUCCEEDED          -> next == PARTIALLY_REFUNDED || next == REFUNDED;
-            case PARTIALLY_REFUNDED -> next == PARTIALLY_REFUNDED || next == REFUNDED;
+            case SUCCEEDED, PARTIALLY_REFUNDED -> next == PARTIALLY_REFUNDED || next == REFUNDED;
             case REFUNDED           -> false;
         };
 }
