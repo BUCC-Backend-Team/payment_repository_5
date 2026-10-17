@@ -13,7 +13,7 @@ import java.security.MessageDigest;
 
 @Component
 public class ApiKeyFilter extends OncePerRequestFilter {
-    private static final String BEARER="Bearer";
+    private static final String BEARER="Bearer ";
     public byte[] expectedKey;
 
     public ApiKeyFilter(AppProps props){

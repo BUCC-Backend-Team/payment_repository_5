@@ -174,9 +174,9 @@ public class PaymentService {
                 p.getCurrency(), p.checkout_url, p.channel, p.amount_refunded);
     }
 
-    // --------------------------------------------------------------- helpers
 
-    /** The 201 body always shows the status at creation, so a replay matches the original response. */
+
+    //helper functions
     private static CreatePaymentResponse createResponse(Payments p) {
         return new CreatePaymentResponse(p.id, p.order_id, PaymentStatus.PENDING.api(),
                 p.amount, p.getCurrency(), p.checkout_url);
