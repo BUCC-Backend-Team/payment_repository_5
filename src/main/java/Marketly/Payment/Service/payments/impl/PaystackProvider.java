@@ -77,10 +77,10 @@ public class PaystackProvider implements PaymentProvider {
 
     @Override
     public VerifyTransaction verify(String reference) {
-        Map<String, Object> d = data( http.get()
+        Map<String, Object> d = data( send(() ->http.get()
                 .uri("/transaction/verify/{ref}", reference)
                 .retrieve()
-                .body(MAP));
+                .body(MAP)));
 
         String paidAt = str(d.get("paid_at"));
         return new VerifyTransaction(

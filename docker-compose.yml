@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: Marketly
       POSTGRES_USER: Admin
-      POSTGRES_PASSWORD: X82Gky3oki9you
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5432:5432"
     volumes:

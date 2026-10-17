@@ -4,7 +4,7 @@ import Marketly.Payment.Service.controller.dto.CreatePaymentRequest;
 import Marketly.Payment.Service.controller.dto.CreatePaymentResponse;
 import Marketly.Payment.Service.controller.dto.PaymentDetails;
 import Marketly.Payment.Service.exception.ApiException;
-import Marketly.Payment.Service.payments.PaymentService;
+import Marketly.Payment.Service.payments.Service.PaymentService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
