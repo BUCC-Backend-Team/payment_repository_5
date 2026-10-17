@@ -1,67 +1,74 @@
-## PAYMENT SERVICE (MARKETLY)
-This is a payment system to be integrated into Marketly, an existing ecommerce platform.
+# (Marketly) Payment Service
 
-STACK
+A payment service built for integration with Marketly, an existing e-commerce platform.
+
+## My Goal
+
+Provide a reliable, scalable, and auditable way to process online payments within Marketly.
+
+## Stack
+
 - Spring Boot for backend logic
+- PostgreSQL for persistent data
 - Docker for running PostgreSQL locally
 - Paystack API for payment processing
-- PostgreSQL for database
 
-FEATURES
+## Features
+
 - Payment processing and status tracking
 - Refund management
 - Webhook event handling
-- Idempotency key support
-- Callback outbox  for reliable event delivery
+- Idempotency-key support
+- Callback outbox for reliable event delivery
 
-ENTITIES
-- Payments
-- PaymentStatus
-- Refunds
-- WebhookEvents
-- IdempotencyKeys
-- CallbackOutbox
+## Data Model
 
-My GOAL
-To provide a reliable, scalable, and auditable payment service for online transactions within the Marketly platform.
+The service uses the following entities:
 
-**Api key Filter**
-The apiKeyFilter class runs once on every request to ensure they have the correct Api key
+- `Payments`
+- `PaymentStatus`
+- `Refunds`
+- `WebhookEvents`
+- `IdempotencyKeys`
+- `CallbackOutbox`
+
+## Key Components
+
+### API key filter
+
+APIKEY FILTER checks each request for a valid API key.
+
+### Payment provider
+
+The PAYMENT PROVIDER interface defines operations to initialize, verify, and refund transactions. Initialization returns a reference that uniquely identifies the payment, along with checkout details such as the access code and return URL. PAYSTACK PROVIDER uses Spring's RESTCLIENT to communicate with Paystack.
 
 
-**Payment Provider interface**
-_payment interface holds methods to_
-- initialize a transaction
-- refund a payment
-- verify a transaction 
+### Provider responses and errors
 
-_The return types contain reference(to uniquely identify a payment).amount,accessCode ,returnUrl Etc_
-within the paystack provider a restClient is implemented to facilitate Http calls between this service and paystack
+The provider's DATA helper validates Paystack's response and extracts its DATA payload. Provider failures are represented by PROVIDER EXCEPTION, which indicates whether the operation can be retried.
 
-there is a wrapper around each call called data which helps to unpack paystacks' respose as well as help with retries
+### Concurrency and idempotency
 
-retry errors or other payment provider errors are handled by the ProviderException class
+A unique database constraint on the order ID prevents duplicate payment records for the same order. Repository-level constraints also protect payment and idempotency records from duplicates and invalid states.
 
-**Concurrency**
-for concurrency I enforced a unique index on order id so a duplicate process which
-tries the register and existing order is rejected outright
+- A matching idempotency key and request replays the original result. using the same key with a different request is rejected.
+- Retryable Paystack initialization failures are retried up to three times with the same payment reference.
+- The `LATE flag records when a payment succeeds after it was marked expired.
 
-the allowed states are
-pending
-succeded
-partially refunded
-and not late(this was the most difficult)
+### Payment status transitions
 
-constraints also exist at the repository level for idempotency keys and payments to prevent wrong states being saved
-or duplicates.
+Allowed transitions are:
 
-**States**
-for payment states the order of flow is
+Current status → Allowed next status 
 
-PENDING            → SUCCEEDED or EXPIRED.
-EXPIRED            → SUCCEEDED.
-SUCCEEDED          → PARTIALLY_REFUNDED or REFUNDED.
-PARTIALLY_REFUNDED → PARTIALLY_REFUNDED or REFUNDED.
-REFUNDED           → false.
+`PENDING` -> `SUCCEEDED` or `EXPIRED`
+ `EXPIRED` -> `SUCCEEDED` 
+`SUCCEEDED` ->`PARTIALLY_REFUNDED`or `REFUNDED` 
+`PARTIALLY_REFUNDED` ->`PARTIALLY_REFUNDED` or `REFUNDED` 
+`REFUNDED` -> None 
 
+## Payment service
+
+PAYMENT SERVICE contains the payment workflow and calls the provider to start checkout. It saves the payment and idempotency reservation before contacting Paystack, then uses the idempotency key to handle duplicate requests safely. 
+it contains helper methods to validate payment requests and responses and  some exception handlers like apiException for 409,500.
 
