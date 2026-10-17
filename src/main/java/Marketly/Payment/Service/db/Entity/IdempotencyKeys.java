@@ -23,6 +23,7 @@ public class IdempotencyKeys {
     @Column(nullable = false,updatable = false)
     public String requestHash;
     public Integer responseStatus;
+    @Column(columnDefinition = "text")
     public String responseBody;
 
 

@@ -25,6 +25,7 @@ public class CallbackOutbox {
 
     @Column(nullable = false)
     public String type;
+    @Column(columnDefinition = "text")
     public String payload;
 
     public int attempts;

@@ -16,8 +16,13 @@ public interface PaymentRepository extends JpaRepository<Payments,UUID> {
     @Modifying
     @Query(value = """
         UPDATE payment
-        SET status = 'SUCCEEDED', late = (status = 'EXPIRED'), paid_at = :paidAt, updated_at = now()
+        SET status = 'SUCCEEDED', late = (status = 'EXPIRED'), paid_at = :paidAt,channel=:channel, updated_at = now()
         WHERE id = :id AND status IN ('PENDING', 'EXPIRED')
         """, nativeQuery = true)
-    int markSucceeded(@Param("id") UUID id, @Param("paidAt") Instant paidAt);
+    int markSucceeded(@Param("id") UUID id, @Param("paidAt") Instant paidAt, @Param("channel") String channel);
+
+    @Modifying
+    @Query(value = "UPDATE payment SET checkout_url = :url, updated_at = now() WHERE id = :id",
+                        nativeQuery = true)
+                int saveCheckoutUrl(@Param("id") UUID id, @Param("url") String url);
 }

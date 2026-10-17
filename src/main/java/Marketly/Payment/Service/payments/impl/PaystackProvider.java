@@ -8,12 +8,18 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Supplier;
 
 @Component
 public class PaystackProvider implements PaymentProvider {
@@ -52,6 +58,24 @@ public class PaystackProvider implements PaymentProvider {
     }
 
     @Override
+    public Optional<RefundResult> findRefund(String reference, long amountKobo, Set<String> usedRefundIds) {
+        Map<String, Object> res = send(() -> http.get()
+                                .uri(u -> u.path("/refund").queryParam("reference", reference).queryParam("perPage", 50).build())
+                                .retrieve()
+                                .body(MAP));
+                if (res == null || !(res.get("data") instanceof List<?> rows)) return Optional.empty();
+                for (Object o : rows) {
+                        if (!(o instanceof Map<?, ?> row)) continue;
+                        String id = str(row.get("id"));
+                        String status = str(row.get("status"));
+                        long amount = row.get("amount") instanceof Number n ? n.longValue() : -1;
+                        if (id == null || usedRefundIds.contains(id) || "failed".equals(status) || amount != amountKobo) continue;
+                        return Optional.of(new RefundResult(id, status, amount));
+                    }
+                return Optional.empty();
+    }
+
+    @Override
     public VerifyTransaction verify(String reference) {
         Map<String, Object> d = data( http.get()
                 .uri("/transaction/verify/{ref}", reference)
@@ -68,21 +92,37 @@ public class PaystackProvider implements PaymentProvider {
                 paidAt == null ? null : Instant.parse(paidAt));
     }
 
-    @Override
-    public RefundResult refund(String reference, long amountKobo) {
-        Map<String, Object> body = Map.of("transaction", reference, "amount", amountKobo);
-
-        Map<String, Object> d = data( http.post()
-                .uri("/refund")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body)
-                .retrieve()
-                .body(MAP));
-
-
-        long amount = d.get("amount") instanceof Number n ? n.longValue() : amountKobo;
-        return new RefundResult(str(d.get("id")), str(d.get("status")), amount);
-    }
+    public RefundResult refund(String reference, long amountKobo, Set<String> usedRefundIds) {
+                try {
+                        Map<String, Object> body = Map.of("transaction", reference, "amount", amountKobo);
+                        Map<String, Object> d = data(send(() -> http.post()
+                                        .uri("/refund")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .body(body)
+                                        .retrieve()
+                                        .body(MAP)));
+                        long amount = d.get("amount") instanceof Number n ? n.longValue() : amountKobo;
+                        return new RefundResult(str(d.get("id")), str(d.get("status")), amount);
+                    } catch (ProviderException exception
+                ) {
+                        if (!exception.retryable) throw exception;
+                        try {
+                                Optional<RefundResult> existing = findRefund(reference, amountKobo, usedRefundIds);
+                               if (existing.isPresent()) return existing.get();
+                            }catch (ProviderException lookupFailed) {}
+                        throw exception;
+                    }
+            }
+    private static <T> T send(Supplier<T> call) {
+                try {
+                        return call.get();
+                    } catch (RestClientResponseException e) {
+                        int status = e.getStatusCode().value();
+                        throw new ProviderException("Paystack responded " + status, status >= 500, e, status);
+                    } catch (ResourceAccessException e) {
+                        throw new ProviderException("Could not reach Paystack", true, e);
+                    }
+            }
     @SuppressWarnings("unchecked")
     private static Map<String, Object> data(Map<String, Object> res) {
         if (res == null || !Boolean.TRUE.equals(res.get("status")) || !(res.get("data") instanceof Map<?, ?> d)) {
