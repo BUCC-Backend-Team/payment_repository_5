@@ -13,6 +13,25 @@ Provide a reliable, scalable, and auditable way to process online payments withi
 - Docker for running PostgreSQL locally
 - Paystack API for payment processing
 
+## Run
+
+```bash
+docker compose up -d      # Postgres (needs DB_PASSWORD)
+./mvnw spring-boot:run    # listens on port 4000
+```
+
+## Environment variables
+
+| Variable | Purpose |
+|---|---|
+| `MERCHANT_API_KEY` | Bearer token Marketly must send |
+| `PAYSTACK_SECRET_KEY` | Paystack test key, also verifies webhook signatures |
+| `CALLBACK_URL` | Where signed callbacks to Marketly are sent |
+| `CALLBACK_SECRET` | HMAC key for callback signatures |
+| `PAYMENT_TIMEOUT_SECONDS` | Pending time before expiry (default 1800) |
+| `TEST_MODE` | `true` enables `POST /admin/reset` |
+| `DB_URL`, `DB_USER`, `DB_PASSWORD` | Database connection |
+
 ## Features
 
 - Payment processing and status tracking
@@ -31,6 +50,16 @@ The service uses the following entities:
 - `WebhookEvents`
 - `IdempotencyKeys`
 - `CallbackOutbox`
+
+## How it works
+
+- **Idempotency:** keys are stored with a request hash under a unique constraint. Repeats replay the saved result, and a reused key with a different body returns 422.
+- **Concurrency:** a partial unique index allows one active payment per order. Refunds lock the payment row before checking the balance, so they can never exceed the amount paid.
+- **Webhooks:** HMAC-SHA512 signature check, a dedup key committed in the same transaction as the state change, and `charge.success` is confirmed with Paystack's verify endpoint.
+- **Callbacks:** written to an outbox table in the same transaction as the state change, then delivered by a background worker with exponential backoff and the same `id` on every retry. They survive restarts.
+- **Expiry and reconciliation:** a job verifies pending payments after the timeout and expires unpaid ones. It also rechecks recently expired payments, so a late transfer becomes `succeeded` with `late: true`.
+- **Refund timeouts:** if a Paystack refund call times out, the refund stays pending. A recovery job asks Paystack whether it exists before ever creating another.
+
 
 ## Key Components
 
