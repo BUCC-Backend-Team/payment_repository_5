@@ -72,6 +72,10 @@ Current status → Allowed next status
 PAYMENT SERVICE contains the payment workflow and calls the provider to start checkout. It saves the payment and idempotency reservation before contacting Paystack, then uses the idempotency key to handle duplicate requests safely. 
 it contains helper methods to validate payment requests and responses and  some exception handlers like apiException for 409,500.
 
+## Retries
+retries like 5xx or 429 are caught in wrappers named send or data within paystack providers and apiException, in others such as payment service.
+The send wrapper poses a retryable flag which allows 429 or 5xx to retry.
+It is worth to note that codes like 404 are not retryable .
 ## System design diagram
 the system design diagram is found in the root outside of src.
 

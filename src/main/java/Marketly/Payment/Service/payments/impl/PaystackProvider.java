@@ -47,12 +47,12 @@ public class PaystackProvider implements PaymentProvider {
                 "reference", r.reference(),
                 "callback_url", r.returnUrl());
 
-        Map<String, Object> d = data( http.post()
+        Map<String, Object> d = data( send(()->http.post()
                 .uri("/transaction/initialize")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
-                .body(MAP));
+                .body(MAP)));
 
         return new InitResult(str(d.get("reference")), str(d.get("authorization_url")), str(d.get("access_code")));
     }
@@ -118,7 +118,7 @@ public class PaystackProvider implements PaymentProvider {
                         return call.get();
                     } catch (RestClientResponseException e) {
                         int status = e.getStatusCode().value();
-                        throw new ProviderException("Paystack responded " + status, status >= 500, e, status);
+                        throw new ProviderException("Paystack responded " + status, status >= 500|| status==429, e, status);
                     } catch (ResourceAccessException e) {
                         throw new ProviderException("Could not reach Paystack", true, e);
                     }
