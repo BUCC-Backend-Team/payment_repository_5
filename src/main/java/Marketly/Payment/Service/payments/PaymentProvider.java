@@ -1,4 +1,4 @@
-package providers;
+package Marketly.Payment.Service.payments;
 
 import java.time.Instant;
 import java.util.Optional;

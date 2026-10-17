@@ -19,5 +19,11 @@ public interface IdempotencyKeyRepository extends JpaRepository<IdempotencyKeys,
             """, nativeQuery = true)
     int insertIfAbsent(@Param("id") String id, @Param("hash") String hash,
                        @Param("paymentId") UUID paymentId);
+    @Modifying
+    @Query(nativeQuery = true, value = """
+    DELETE FROM idempotency_keys
+    WHERE payment_id = :paymentId AND id LIKE 'payment:create:%'
+    """)
+    int deleteCreateKeyForPayment(@Param("paymentId") UUID paymentId);
 
 }

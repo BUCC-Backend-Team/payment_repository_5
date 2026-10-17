@@ -10,7 +10,7 @@ import Marketly.Payment.Service.db.repository.IdempotencyKeyRepository;
 import Marketly.Payment.Service.db.repository.PaymentRepository;
 import Marketly.Payment.Service.exception.ApiException;
 import Marketly.Payment.Service.exception.ProviderException;
-import providers.PaymentProvider;
+import Marketly.Payment.Service.payments.PaymentProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;

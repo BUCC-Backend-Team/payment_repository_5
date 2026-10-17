@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import providers.PaymentProvider;
+import Marketly.Payment.Service.payments.PaymentProvider;
 import tools.jackson.databind.json.JsonMapper;
 
 import javax.crypto.Mac;
