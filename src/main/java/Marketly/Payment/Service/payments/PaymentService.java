@@ -8,13 +8,12 @@ import Marketly.Payment.Service.db.Entity.Payments;
 import Marketly.Payment.Service.db.enums.PaymentStatus;
 import Marketly.Payment.Service.db.repository.IdempotencyKeyRepository;
 import Marketly.Payment.Service.db.repository.PaymentRepository;
-
 import Marketly.Payment.Service.exception.ApiException;
 import Marketly.Payment.Service.exception.ProviderException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.validation.annotation.Validated;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -25,12 +24,14 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.UUID;
-
+import java.util.regex.Pattern;
 
 @Service
 public class PaymentService {
     private static final int MAX_INIT_ATTEMPTS = 3;
     private static final Duration REPLAY_WAIT = Duration.ofSeconds(20);
+    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
     private final PaymentRepository payments;
     private final IdempotencyKeyRepository keys;
     private final PaymentProvider provider;
@@ -40,36 +41,64 @@ public class PaymentService {
     public record Valid(String orderId, long amount, String currency, String email, String returnUrl) {}
     public record Reservation(Payments created, IdempotencyKeys existing) {}
 
-    public PaymentService(PaymentRepository payments, IdempotencyKeyRepository keys, PaymentProvider provider,
-                          PlatformTransactionManager txManager) {
+    public PaymentService(PaymentRepository payments, IdempotencyKeyRepository keys,
+                          PaymentProvider provider, PlatformTransactionManager txManager) {
         this.payments = payments;
         this.keys = keys;
         this.provider = provider;
         this.tx = new TransactionTemplate(txManager);
     }
 
-    //create transaction
-    public createResult createResult(String rawKey, CreatePaymentRequest createPaymentRequest) {
+    public CreateResult create(String rawKey, CreatePaymentRequest req) {
+        Valid v = validate(req);
+        String keyId = "payment:create:" + rawKey;
+        String hash = hash(v);
 
+        // Step 1: short transaction. Reserve the key and save the pending payment together.
+        Reservation r;
+        try {
+            r = tx.execute(status -> reserve(keyId, hash, v));
+        } catch (DataIntegrityViolationException e) {
+            // The partial unique index refused a second live payment for this order.
+            throw new ApiException("This order already has a pending or succeeded payment", 409, "payment_exists");
+        }
+        if (r.existing() != null) {
+            return replay(keyId, r.existing(), hash);
+        }
+
+        // Step 2: call Paystack with NO transaction open.
+        Payments p = r.created();
+        String checkoutUrl = startCheckout(p, keyId);
+
+        // Step 3: store the checkout URL and mark the key complete, atomically.
+        CreatePaymentResponse body = tx.execute(status -> {
+            Payments fresh = payments.findById(p.id).orElseThrow();
+            fresh.checkout_url = checkoutUrl;
+            fresh.updated_at = Instant.now();
+            keys.findById(keyId).orElseThrow().setResponseStatus(201);
+            return createResponse(fresh);
+        });
+        return new CreateResult(body, false);
     }
 
-    // once a payment starts a reservation in the db via the idempotency key
-    //so if a duplicate request lands its returns the same value no duplicates
-    private Reservation reserve(String keyId, String hash, Valid valid) {
-        UUID paymentId=UUID.randomUUID();
-        if(keys.insertIfAbsent(keyId,hash,paymentId)==0){
-            IdempotencyKeys existing=keys.findById(keyId).orElseThrow(()->
-                    new ApiException("retry the request",409,"request in progress"));
-            return new Reservation(null,existing);
+    private Reservation reserve(String keyId, String hash, Valid v) {
+        UUID paymentId = UUID.randomUUID();
+
+
+        if (keys.insertIfAbsent(keyId, hash, paymentId) == 0) {
+            IdempotencyKeys existing = keys.findById(keyId).orElseThrow(() ->
+                    new ApiException("Retry the request", 409, "request_in_progress"));
+            return new Reservation(null, existing);
         }
+
         Instant now = Instant.now();
         Payments p = new Payments();
         p.id = paymentId;
-        p.order_id = valid.orderId();
-        p.amount = valid.amount();
-        p.setCurrency(valid.currency());
-        p.customer_email = valid.email();
-        p.return_url = valid.returnUrl();
+        p.order_id = v.orderId();
+        p.amount = v.amount();
+        p.setCurrency(v.currency());
+        p.customer_email = v.email();
+        p.return_url = v.returnUrl();
         p.setStatus(PaymentStatus.PENDING);
         p.amount_refunded = 0;
         p.late = false;
@@ -78,8 +107,32 @@ public class PaymentService {
         payments.saveAndFlush(p);
         return new Reservation(p, null);
     }
-    private String startCheckout(Payments payment,String keyId){
-    return "checkout";
+
+    private String startCheckout(Payments p, String keyId) {
+        try {
+            return initialize(new PaymentProvider.InitRequest(p.id.toString(), p.customer_email,
+                    p.amount, p.getCurrency(), p.return_url)).checkoutUrl();
+        } catch (RuntimeException e) {
+            // Nobody has a checkout URL for this reference, so it can never be paid.
+            // Release the order and the key so the client can retry cleanly.
+            release(p.id, keyId);
+            if (e instanceof ProviderException) {
+                throw new ApiException("Could not start the payment, please retry", 502, "provider_error");
+            }
+            throw e;
+        }
+    }
+
+
+    private PaymentProvider.InitResult initialize(PaymentProvider.InitRequest req) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return provider.initializeTransaction(req);
+            } catch (ProviderException e) {
+                if (!e.retryable || attempt == MAX_INIT_ATTEMPTS) throw e;
+                sleep(200L * attempt);
+            }
+        }
     }
 
     private void release(UUID paymentId, String keyId) {
@@ -87,6 +140,25 @@ public class PaymentService {
             keys.deleteById(keyId);
             payments.deleteById(paymentId);
         });
+    }
+
+    private CreateResult replay(String keyId, IdempotencyKeys seen, String hash) {
+        if (!seen.getRequestHash().equals(hash)) {
+            throw new ApiException("This Idempotency-Key was already used with a different request body",
+                    422, "idempotency_key_reused");
+        }
+        IdempotencyKeys k = seen;
+        long deadline = System.nanoTime() + REPLAY_WAIT.toNanos();
+        while (k.getResponseStatus() == null) {
+            if (System.nanoTime() > deadline) {
+                throw new ApiException("The original request is still running", 409, "request_in_progress");
+            }
+            sleep(100);
+            k = keys.findById(keyId).orElseThrow(() ->
+                    new ApiException("The original request failed, retry with the same key", 502, "provider_error"));
+        }
+        Payments p = payments.findById(k.getPaymentId()).orElseThrow();
+        return new CreateResult(createResponse(p), true);
     }
 
     public PaymentDetails get(String id) {
@@ -102,96 +174,63 @@ public class PaymentService {
                 p.getCurrency(), p.checkout_url, p.channel, p.amount_refunded);
     }
 
+    // --------------------------------------------------------------- helpers
 
-
-    private CreateResult replay(String keyId, IdempotencyKeys seen, String hash) {
-        if (!seen.getRequestHash().equals(hash)) {
-            throw new ApiException("This Idempotency-Key was already used by a different request body",
-                    422, "idempotency_key_reused");
-        }
-
-        IdempotencyKeys key = seen;
-        long deadline = System.nanoTime() + REPLAY_WAIT.toNanos();
-        while (key.getResponseStatus() == null) {
-            if (System.nanoTime() > deadline) {
-                throw new ApiException("The original request is still running", 409, "request_in_progress");
-            }
-            sleep(100);
-            key = keys.findById(keyId).orElseThrow(() ->
-                    new ApiException("The original request failed, retry with the same key", 502, "provider_error"));
-        }
-        Payments p = payments.findById(key.getPaymentId()).orElseThrow();
-        return new CreateResult(createResponse(p), true);
-    }
-
-
-    private PaymentProvider.InitResult initialize(PaymentProvider.InitRequest request) {
-        for (int attempt = 1; ; attempt++) {
-            try {
-                return provider.initializeTransaction(request);
-            } catch (ProviderException exception) {
-                if (!exception.retryable || attempt == MAX_INIT_ATTEMPTS) throw exception;
-                sleep(200L * attempt);
-            }
-        }
-    }
+    /** The 201 body always shows the status at creation, so a replay matches the original response. */
     private static CreatePaymentResponse createResponse(Payments p) {
         return new CreatePaymentResponse(p.id, p.order_id, PaymentStatus.PENDING.api(),
                 p.amount, p.getCurrency(), p.checkout_url);
     }
-    public static Valid validate(CreatePaymentRequest request) {
-        if(request == null) throw bad("this request requires a body");
-        String orderId=request.orderId();
-        if (request.orderId().isEmpty()) {
-            throw bad("order Id cannot be null");
-        }
-        //if ( request.amount()){ throw bad("amount is required");}
-        long amount;
 
-        try {
-            amount = request.amount();
-        } catch (ArithmeticException e) {
-            throw bad("amount must be a whole number of kobo");
-        }
-        if(amount<=0){
-            throw bad("amount must be greater than 0");
-        }
-        String currency=request.currency().trim().toUpperCase();
-        if(!currency.equals("NGN")){throw bad("currency must be NGN");}
+    public static Valid validate(CreatePaymentRequest r) {
+        if (r == null) throw bad("this request requires a body");
 
-        String email=request.customerEmail().trim();
-        String returnUrl=request.returnUrl().trim();
+        String orderId = trim(r.orderId());
+        if (orderId.isEmpty()) throw bad("orderId is required");
+
+        if (r.amount() <= 0) throw bad("amount must be a whole number of kobo greater than 0");
+
+        String currency = trim(r.currency()).toUpperCase(Locale.ROOT);
+        if (!currency.equals("NGN")) throw bad("currency must be NGN");
+
+        String email = trim(r.customerEmail());
+        if (!EMAIL.matcher(email).matches()) throw bad("customerEmail is invalid");
+
+        String returnUrl = trim(r.returnUrl());
         try {
             URI uri = URI.create(returnUrl);
             boolean web = "http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme());
             if (!web || uri.getHost() == null) throw bad("returnUrl must be an http(s) URL");
         } catch (IllegalArgumentException e) {
-            throw bad("uri must be https");
+            throw bad("returnUrl must be an http(s) URL");
         }
-        return new Valid(orderId, amount, currency, email, returnUrl);
+        return new Valid(orderId, r.amount(), currency, email, returnUrl);
     }
 
-    private static String hash(Valid valid){
-        try{
-            String canonical = String.join("\n", valid.orderId(), Long.toString(valid.amount()),
-                    valid.currency(), valid.email(), valid.returnUrl());
-            byte[] digest= MessageDigest.getInstance("SHA-256").digest(canonical.getBytes(StandardCharsets.UTF_8));
+    private static String hash(Valid v) {
+        try {
+            String canonical = String.join("\n", v.orderId(), Long.toString(v.amount()),
+                    v.currency(), v.email(), v.returnUrl());
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(canonical.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException(exception);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
         }
     }
+
+    private static String trim(String s) { return s == null ? "" : s.trim(); }
+
+    private static ApiException bad(String message) {
+        return new ApiException(message, 400, "invalid_request");
+    }
+
     private static void sleep(long ms) {
         try {
             Thread.sleep(ms);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ApiException("Request interrupted", 503,"interrupted" );
+            throw new ApiException("Request interrupted", 503, "interrupted");
         }
-    }
-
-    private static ApiException bad(String message) {
-        return new ApiException(message, 400,"invalid_request" );
-
     }
 }
