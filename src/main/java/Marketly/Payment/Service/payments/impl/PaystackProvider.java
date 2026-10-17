@@ -2,7 +2,7 @@ package Marketly.Payment.Service.payments.impl;
 
 import Marketly.Payment.Service.config.AppProps;
 import Marketly.Payment.Service.exception.ProviderException;
-import Marketly.Payment.Service.payments.PaymentProvider;
+import providers.PaymentProvider;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
