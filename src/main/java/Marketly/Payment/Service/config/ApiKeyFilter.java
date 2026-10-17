@@ -26,24 +26,17 @@ public class ApiKeyFilter extends OncePerRequestFilter {
         return p.equals("/health") || p.equals("/webhooks/paystack");
     }
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        try {
-            String header=request.getHeader("Authorization");
-            if(header != null && header.startsWith(BEARER)){
-                byte[] provided=header.substring(BEARER.length()).trim().getBytes(StandardCharsets.UTF_8);
-                if(MessageDigest.isEqual(provided,expectedKey)){
-                    filterChain.doFilter(request,response);
-                    return;
-                }
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith(BEARER)) {
+            byte[] provided = header.substring(BEARER.length()).trim().getBytes(StandardCharsets.UTF_8);
+            if (MessageDigest.isEqual(provided, expectedKey)) {
+                filterChain.doFilter(request, response);
+                return;
             }
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        } catch (Exception e) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            throw new RuntimeException(e);
         }
-
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
     }
 
 }

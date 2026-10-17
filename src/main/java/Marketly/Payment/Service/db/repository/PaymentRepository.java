@@ -38,4 +38,8 @@ public interface PaymentRepository extends JpaRepository<Payments,UUID> {
     List<UUID> findExpirable(@Param("normalCutoff") Instant normalCutoff,
                              @Param("stuckCutoff") Instant stuckCutoff,
                              @Param("max") int max);
+    @Modifying
+    @Query(value = "UPDATE payment SET status = 'EXPIRED', updated_at = now() WHERE id = :id AND status = 'PENDING'",
+            nativeQuery = true)
+    int markExpired(@Param("id") UUID id);
 }

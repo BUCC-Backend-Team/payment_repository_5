@@ -1,18 +1,19 @@
 package Marketly.Payment.Service.webhooks;
 
-import Marketly.Payment.Service.callbacks.CallbackService;
 import Marketly.Payment.Service.config.AppProps;
 import Marketly.Payment.Service.db.Entity.Payments;
 import Marketly.Payment.Service.db.repository.PaymentRepository;
 import Marketly.Payment.Service.db.repository.WebhookEventRepository;
 import Marketly.Payment.Service.exception.ApiException;
 import Marketly.Payment.Service.exception.ProviderException;
+import Marketly.Payment.Service.payments.PaymentProvider;
+import Marketly.Payment.Service.payments.Service.PaymentStateService;
+import Marketly.Payment.Service.refunds.RefundStateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import Marketly.Payment.Service.payments.PaymentProvider;
 import tools.jackson.databind.json.JsonMapper;
 
 import javax.crypto.Mac;
@@ -34,17 +35,19 @@ public class WebhookService {
     private final PaymentProvider provider;
     private final PaymentRepository payments;
     private final WebhookEventRepository events;
-    private final CallbackService callbacks;
+    private final PaymentStateService paymentState;
+    private final RefundStateService refundState;
     private final TransactionTemplate tx;
 
     public WebhookService(AppProps props, PaymentProvider provider, PaymentRepository payments,
-                          WebhookEventRepository events, CallbackService callbacks,
-                          PlatformTransactionManager txManager) {
+                          WebhookEventRepository events, PaymentStateService paymentState,
+                          RefundStateService refundState, PlatformTransactionManager txManager) {
         this.props = props;
         this.provider = provider;
         this.payments = payments;
         this.events = events;
-        this.callbacks = callbacks;
+        this.paymentState = paymentState;
+        this.refundState = refundState;
         this.tx = new TransactionTemplate(txManager);
     }
 
@@ -55,8 +58,9 @@ public class WebhookService {
         String type = str(event.get("event"));
         if ("charge.success".equals(type)) {
             onChargeSuccess(asMap(event.get("data")));
+        } else if ("refund.processed".equals(type) || "refund.failed".equals(type)) {
+            onRefundEvent(type, asMap(event.get("data")));
         }
-        // refund.processed / refund.failed: added in the refunds step.
         // Anything else: acknowledged with 200 and ignored.
     }
 
@@ -91,17 +95,47 @@ public class WebhookService {
         }
 
         Instant paidAt = v.paidAt() != null ? v.paidAt() : Instant.now();
+        String channel = v.channel();
 
         tx.executeWithoutResult(status -> {
             // Dedup row and state change commit together, or neither does.
             if (events.insertIfAbsent(key, "charge.success", paymentId) == 0) return;
-
-            // 1 = we moved PENDING/EXPIRED -> SUCCEEDED; 0 = already succeeded/refunded.
-            if (payments.markSucceeded(paymentId, paidAt, v.channel()) == 1) {
-                Payments fresh = payments.findById(paymentId).orElseThrow();
-                callbacks.enqueue(fresh, "payment.succeeded");
-            }
+            paymentState.succeed(paymentId, paidAt, channel);
         });
+    }
+
+    private void onRefundEvent(String type, Map<String, Object> data) {
+        String dataId = str(data.get("id"));
+        UUID paymentId = paymentIdFrom(data);
+        if (dataId == null || paymentId == null) return;
+
+        String key = type + ":" + dataId;
+        if (events.existsById(key)) return;
+        if (!payments.existsById(paymentId)) return;        // not one of ours
+
+        long amount = data.get("amount") instanceof Number n ? n.longValue() : -1;
+
+        tx.executeWithoutResult(status -> {
+            if (events.insertIfAbsent(key, type, paymentId) == 0) return;
+
+            UUID refundId = refundState.findRefundId(paymentId, dataId, amount);
+            if (refundId == null) {
+                log.warn("{} for payment {} matches no pending refund, ignoring", type, paymentId);
+                return;
+            }
+            if ("refund.processed".equals(type)) refundState.processed(refundId);
+            else refundState.failed(refundId, "Paystack reported refund.failed");
+        });
+    }
+
+    /** Paystack names the original transaction reference differently across payloads. */
+    private static UUID paymentIdFrom(Map<String, Object> data) {
+        String ref = str(data.get("transaction_reference"));
+        if (ref == null) ref = str(asMap(data.get("transaction")).get("reference"));
+        if (ref == null) ref = str(data.get("reference"));
+        if (ref == null) return null;
+        try { return UUID.fromString(ref); }
+        catch (IllegalArgumentException e) { return null; }
     }
 
     private void verifySignature(byte[] raw, String signature) {

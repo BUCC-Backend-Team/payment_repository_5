@@ -84,7 +84,7 @@ public class CallbackWorker {
             HttpRequest req = HttpRequest.newBuilder(URI.create(props.callbackUrl()))
                     .timeout(Duration.ofSeconds(5))
                     .header("Content-Type", "application/json")
-                    .header("X-Marketly-Signature", "t=" + ts + ",v1=" + sign(ts, d.payload()))
+                    .header("X-MarketlySignature", "t=" + ts + ",v1=" + sign(ts, d.payload()))
                     .POST(HttpRequest.BodyPublishers.ofString(d.payload(), StandardCharsets.UTF_8))
                     .build();
 
