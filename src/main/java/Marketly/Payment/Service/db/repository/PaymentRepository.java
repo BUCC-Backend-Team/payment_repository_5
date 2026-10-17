@@ -12,34 +12,50 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface PaymentRepository extends JpaRepository<Payments,UUID> {
+public interface PaymentRepository extends JpaRepository<Payments, UUID> {
 
     @Modifying
     @Query(value = """
         UPDATE payment
-        SET status = 'SUCCEEDED', late = (status = 'EXPIRED'), paid_at = :paidAt,channel=:channel, updated_at = now()
+        SET status = 'SUCCEEDED', late = (status = 'EXPIRED'), paid_at = :paidAt, channel = :channel, updated_at = now()
         WHERE id = :id AND status IN ('PENDING', 'EXPIRED')
         """, nativeQuery = true)
     int markSucceeded(@Param("id") UUID id, @Param("paidAt") Instant paidAt, @Param("channel") String channel);
 
     @Modifying
-    @Query(value = "UPDATE payment SET checkout_url = :url, updated_at = now() WHERE id = :id",
-                        nativeQuery = true)
-                int saveCheckoutUrl(@Param("id") UUID id, @Param("url") String url);
-
-    @Query(nativeQuery = true, value = """
-    SELECT id FROM payment
-    WHERE status = 'PENDING'
-      AND ( (checkout_url IS NOT NULL AND created_at <= :normalCutoff)
-         OR (checkout_url IS NULL     AND created_at <= :stuckCutoff) )
-    ORDER BY created_at
-    LIMIT :max
-    """)
-    List<UUID> findExpirable(@Param("normalCutoff") Instant normalCutoff,
-                             @Param("stuckCutoff") Instant stuckCutoff,
-                             @Param("max") int max);
-    @Modifying
     @Query(value = "UPDATE payment SET status = 'EXPIRED', updated_at = now() WHERE id = :id AND status = 'PENDING'",
             nativeQuery = true)
     int markExpired(@Param("id") UUID id);
+
+    @Modifying
+    @Query(value = "UPDATE payment SET updated_at = now() WHERE id = :id AND status = 'EXPIRED'",
+            nativeQuery = true)
+    int touchExpired(@Param("id") UUID id);
+
+    @Modifying
+    @Query(value = "UPDATE payment SET checkout_url = :url, updated_at = now() WHERE id = :id",
+            nativeQuery = true)
+    int saveCheckoutUrl(@Param("id") UUID id, @Param("url") String url);
+
+    @Query(nativeQuery = true, value = """
+        SELECT id FROM payment
+        WHERE status = 'PENDING'
+          AND ( (checkout_url IS NOT NULL AND created_at <= :normalCutoff)
+             OR (checkout_url IS NULL     AND created_at <= :stuckCutoff) )
+        ORDER BY created_at
+        LIMIT :max
+        """)
+    List<UUID> findExpirable(@Param("normalCutoff") Instant normalCutoff,
+                             @Param("stuckCutoff") Instant stuckCutoff,
+                             @Param("max") int max);
+
+    @Query(nativeQuery = true, value = """
+        SELECT id FROM payment
+        WHERE status = 'EXPIRED' AND created_at >= :since AND updated_at <= :recheckBefore
+        ORDER BY updated_at
+        LIMIT :max
+        """)
+    List<UUID> findRecheckableExpired(@Param("since") Instant since,
+                                      @Param("recheckBefore") Instant recheckBefore,
+                                      @Param("max") int max);
 }

@@ -6,18 +6,19 @@ import Marketly.Payment.Service.db.enums.PaymentStatus;
 import Marketly.Payment.Service.db.repository.IdempotencyKeyRepository;
 import Marketly.Payment.Service.db.repository.PaymentRepository;
 import Marketly.Payment.Service.exception.ProviderException;
+import Marketly.Payment.Service.payments.PaymentProvider;
+import Marketly.Payment.Service.payments.Service.PaymentStateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import Marketly.Payment.Service.payments.PaymentProvider;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import Marketly.Payment.Service.payments.Service.PaymentStateService;
 
 @Component
 public class ExpiryJob {
@@ -58,6 +59,17 @@ public class ExpiryJob {
                     log.error("Expiry check failed for {}", id, e);   // one bad payment must not block the rest
                 }
             }
+
+            // Recheck recently expired payments for late transfers whose webhook was lost.
+            List<UUID> expired = payments.findRecheckableExpired(
+                    now.minus(Duration.ofHours(24)), now.minusSeconds(60), BATCH);
+            for (UUID id : expired) {
+                try {
+                    recheckExpired(id);
+                } catch (Exception e) {
+                    log.error("Expired recheck failed for {}", id, e);
+                }
+            }
         } catch (Exception e) {
             log.error("Expiry job loop failed", e);
         }
@@ -67,8 +79,7 @@ public class ExpiryJob {
         Payments p = payments.findById(id).orElse(null);
         if (p == null || p.getStatus() != PaymentStatus.PENDING) return;
 
-
-        VerifyTransaction v = null;
+        PaymentProvider.VerifyTransaction v = null;
         try {
             v = provider.verify(id.toString());
         } catch (ProviderException e) {
@@ -100,5 +111,28 @@ public class ExpiryJob {
                 keys.deleteCreateKeyForPayment(id);
             }
         });
+    }
+
+    /** A late bank transfer whose webhook was lost: EXPIRED -> SUCCEEDED with late=true. */
+    private void recheckExpired(UUID id) {
+        Payments p = payments.findById(id).orElse(null);
+        if (p == null || p.getStatus() != PaymentStatus.EXPIRED) return;
+
+        PaymentProvider.VerifyTransaction v;
+        try {
+            v = provider.verify(id.toString());
+        } catch (ProviderException e) {
+            v = null;                                   // unknown to Paystack or unreachable, try again later
+        }
+
+        if (v != null && v.succeeded()
+                && v.amount() == p.amount && p.getCurrency().equalsIgnoreCase(v.currency())) {
+            Instant paidAt = v.paidAt() != null ? v.paidAt() : Instant.now();
+            String channel = v.channel();
+            tx.executeWithoutResult(s -> state.succeed(id, paidAt, channel));
+            return;
+        }
+        // Not paid: push it to the back of the queue so Paystack is checked about once a minute per payment.
+        tx.executeWithoutResult(s -> payments.touchExpired(id));
     }
 }
